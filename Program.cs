@@ -31,7 +31,7 @@ namespace Tetris
             public bool NextPiece;
             public bool HardDrop;
 
-            public bool LinePenalties;
+            public bool GarbegeLines;
             public bool FirstPlayerWins;
             public bool InfiniteLevel;
 
@@ -43,7 +43,17 @@ namespace Tetris
         public static GameOptions Options = new GameOptions
         {
             KeyBindingsPlayer1 = new KeyBindings(),
-            KeyBindingsPlayer2 = new KeyBindings(),
+            KeyBindingsPlayer2 = new KeyBindings()
+            {
+                Left = Keys.A,
+                Right = Keys.D,
+                Down = Keys.S,
+                HardDrop = Keys.X,
+                RotateCW = Keys.C,
+                RotateCCW = Keys.V,
+                Hold = Keys.Q,
+                Start = Keys.D2
+            },
             GamepadBindingsPlayer1 = new GamepadBindings(),
             GamepadBindingsPlayer2 = new GamepadBindings(),
             SoundOn = true,
@@ -51,7 +61,7 @@ namespace Tetris
             HoldPiece = true,
             NextPiece = true,
             HardDrop = true,
-            LinePenalties = true,
+            GarbegeLines = true,
             FirstPlayerWins = false,
             InfiniteLevel = false
         };
