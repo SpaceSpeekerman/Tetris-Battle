@@ -132,6 +132,10 @@ namespace Tetris
                 int g1 = game1.ConsumeOutgoingGarbage();
                 if (g1 > 0 && menu.Playing[0])
                     game0.QueueIncomingGarbage(g1);
+
+                int diff = game0.Score - game1.Score;
+                game0.ScoreDelta = diff;
+                game1.ScoreDelta = -diff;
             }
             else if (vs)
             {
@@ -187,11 +191,7 @@ namespace Tetris
 
                         Console.WriteLine("[VS] Match ended by score");
                     }
-
                 }
-                int diff = game0.Score - game1.Score;
-                game0.ScoreDelta = diff;
-                game1.ScoreDelta = -diff;
             }
         }
         // Called when the menu requests a restart. The parameter indicates which player to restart
