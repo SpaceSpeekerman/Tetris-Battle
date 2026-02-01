@@ -80,8 +80,6 @@ namespace Tetris
         {
             if (GameOver) return;
 
-            
-
             // LEFT / RIGHT hold movement
             moveTimer += dt;
             if (moveTimer >= MOVE_REPEAT)

@@ -85,20 +85,20 @@ namespace Tetris
             var input0 = TetrisInput.FromDevices(KeyboardState, js0, false);
             var input1 = TetrisInput.FromDevices(KeyboardState, js1, true);
 
-
             var menuInput0 = MenuInputMapper.FromDevices(KeyboardState, js0);
             var menuInput1 = MenuInputMapper.FromDevices(KeyboardState, js1);
 
             // Let menu tick (countdown, menus). Menu no longer processes Start presses itself.
             menu.Update(e.Time, menuInput0, menuInput1, KeyboardState);
 
+            // --- Handle START centrally (join / pause / resume / restart requests)
+            if (input0.Start) menu.HandleStart(0);
+            if (input1.Start) menu.HandleStart(1);
 
             // If menu is counting down, block gameplay updates until countdown finishes
             if (menu.State == MenuState.Countdown)
                 return;
-            // --- Handle START centrally (join / pause / resume / restart requests)
-            if (input0.Start) menu.HandleStart(0);
-            if (input1.Start) menu.HandleStart(1);
+
 
             // Player 0: update only when in Playing state
             if (menu.Player[0] == PlayerState.Playing)
@@ -248,12 +248,20 @@ namespace Tetris
 
 
             // Always render both players so the second board is visible even if not playing
-            game0.Render(shader, blocksTex, text, vao, vbo);
-            game1.Render(shader, blocksTex, text, vao, vbo);
-
+            if(menu.State == MenuState.None || menu.State == MenuState.Countdown || menu.State == MenuState.Ready)
+            {
+                game0.Render(shader, blocksTex, text, vao, vbo);
+                game1.Render(shader, blocksTex, text, vao, vbo);
+                text.Print(
+                    $"{menu.MatchWins[0]} - {menu.MatchWins[1]}",
+                    18, 3, 0.8f,
+                    Vector4.One,
+                    Vector4.Zero
+                );
+            }
 
             // Overlay "PRESS PLAY" on any board that is not currently playing
-            if (menu.Player[1] == PlayerState.Idle)
+            if (menu.Player[0] == PlayerState.Idle)
             {
                 text.Print("PRESS PLAY", game0.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
             }
@@ -266,12 +274,7 @@ namespace Tetris
             // Draw menu (pause / countdown) on top
             menu.Render(text);
 
-            text.Print(
-                $"{menu.MatchWins[0]} - {menu.MatchWins[1]}",
-                14, 1, 0.8f,
-                Vector4.One,
-                Vector4.Zero
-            );
+            
 
             SwapBuffers();
         }

@@ -52,13 +52,13 @@ namespace Tetris
             // --- 1. Handle Countdown ---
             if (State == MenuState.Countdown)
             {
-                countdown -= dt;
+                countdown -= dt*2;
                 if (countdown <= 0)
                 {
                     State = MenuState.None; // Enable Gameplay
                     countdown = CountdownDuration;
                 }
-                return; // Block menu interaction during countdown
+                return;
             }
 
             // --- 2. Menu Navigation (Only when Menu is open) ---
@@ -115,6 +115,18 @@ namespace Tetris
             PlayerState me = Player[i];
             PlayerState other = Player[otherIndex];
 
+            // JOIN DURING COUNTDOWN
+            if (State == MenuState.Countdown && Player[i] == PlayerState.Idle)
+            {
+                Console.WriteLine($"[MENU] Player {i} joined during countdown");
+
+                Player[i] = PlayerState.Playing;
+
+                // Restart countdown for fairness
+                StartCountdown();
+
+                return;
+            }
             // 1. RESUME (Global): If in Pause menu, any Start press resumes the game
             if (State == MenuState.Pause)
             {
