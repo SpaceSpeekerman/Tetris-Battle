@@ -1,0 +1,24 @@
+﻿# Speed
+StartSpeed=0.8
+LevelIncrement=0.88
+MinSpeed=0.05
+
+# Timing Settings
+LockDelay=0.333
+DelayAfterMove=0.15
+AutoMoveRate=0.05
+
+# Board Settings
+Width=10
+Height=22
+
+# Colors (R,G,B from 0 to 1)
+Color0=0,0,0
+Color1=0,1,1
+Color2=0.3,0.3,1
+Color3=1,0.5,0
+Color4=1,1,0
+Color5=0,1,0
+Color6=0.6,0,0.6
+Color7=1,0,0
+Color8=0.5,0.5,0.5

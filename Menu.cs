@@ -39,7 +39,7 @@ namespace Tetris
         public event Action<int?> OnRestartRequested;
 
         int pauseIndex;
-        string[] pauseItems = { "RESUME", "RESTART", "OPTIONS", "CONTROLS", "QUIT" };
+        string[] pauseItems = { "RESUME", "RESTART", "RESET MATCH SCORES", "OPTIONS", "CONTROLS", "QUIT" };
         int optionsIndex = 0;
         string[] optionsItems = { "Sound", "Ghost Piece", "Hold Piece", "NextPiece",
             "Hard Drop", "Garbage Lines", "First Player Wins", "Infinite Level" };
@@ -49,6 +49,17 @@ namespace Tetris
 
         public void Update(double dt, MenuInput p1, MenuInput p2, KeyboardState kb)
         {
+            MenuInput input = new MenuInput()
+            {
+                Up = p1.Up || p2.Up,
+                Down = p1.Down || p2.Down,
+                Left = p1.Left || p2.Left,
+                Right = p1.Right || p2.Right,
+                Confirm = p1.Confirm || p2.Confirm,
+                Back = p1.Back || p2.Back,
+                Start = p1.Start || p2.Start
+            };
+
             // --- 1. Handle Countdown ---
             if (State == MenuState.Countdown)
             {
@@ -68,11 +79,11 @@ namespace Tetris
             if (State == MenuState.Pause)
             {
                 // Allow both players to navigate, or strictly the ActivePlayer
-                UpdatePauseMenu(p1, p2);
+                UpdatePauseMenu(input);
             }
             else if (State == MenuState.Options)
             {
-                UpdateOptionsMenu(p1, p2);
+                UpdateOptionsMenu(input);
             }
             else if (State == MenuState.KeyConfig)
             {
@@ -208,15 +219,18 @@ namespace Tetris
                     OnRestartRequested?.Invoke(null);
                     StartCountdown();
                     break;
-                case 2: // OPTIONS
+                case 2: // RESET SCORES
+                    MatchWins = [0, 0];
+                    break;
+                case 3: // OPTIONS
                     State = MenuState.Options;
                     break;
 
-                case 3: // CONTROLS
+                case 4: // CONTROLS
                     State = MenuState.KeyConfig;
                     break;
 
-                case 4: // QUIT
+                case 5: // QUIT
                     Environment.Exit(0);
                     break;
             }
@@ -230,26 +244,34 @@ namespace Tetris
             for (int i = 0; i < 2; i++)
                 Playing[i] = (Player[i] == PlayerState.Playing);
         }
-        void UpdatePauseMenu(MenuInput p1, MenuInput p2)
+        void UpdatePauseMenu(MenuInput i)
         {
             // 1. Navigation Up
-            if (p1.Up)
+            if (i.Up)
             {
                 pauseIndex--;
                 if (pauseIndex < 0) pauseIndex = pauseItems.Length - 1;
             }
             // 2. Navigation Down
-            else if (p1.Down)
+            else if (i.Down)
             {
                 pauseIndex++;
                 if (pauseIndex >= pauseItems.Length) pauseIndex = 0;
             }
             // 3. Confirm (A / Enter)
-            else if (p1.Confirm)
+            else if (i.Confirm)
             {
                 ExecutePauseOption(); // Moved switch logic to a helper for clarity
             }
+            // 4. Back Options / B
+            else if (i.Back)
+            {
+                State = MenuState.None;
 
+                // Unpause both players to resume update loops
+                if (Player[0] == PlayerState.Paused) Player[0] = PlayerState.Playing;
+                if (Player[1] == PlayerState.Paused) Player[1] = PlayerState.Playing;
+            }
             // REMOVED: "else if (p1.Start) ..." 
             // We removed the Resume check here because HandleStart already does it!
         }
@@ -311,30 +333,30 @@ namespace Tetris
                 Vector4.Zero
             );
         }
-        void UpdateOptionsMenu(MenuInput p1, MenuInput  p2)
+        void UpdateOptionsMenu(MenuInput i)
         {
             // SU
-            if ( p1.Up)
+            if ( i.Up)
             {
                 optionsIndex--;
                 if (optionsIndex < 0)
                     optionsIndex = optionsItems.Length - 1;
             }
             // GIÙ
-            else if ( p1.Down)
+            else if ( i.Down)
             {
                 optionsIndex++;
                 if (optionsIndex >= optionsItems.Length)
                     optionsIndex = 0;
             }
             // TOGGLE (A / ENTER)
-            else if (p1.Confirm)
+            else if (i.Confirm )
             {
                 ToggleOption(optionsIndex);
                 Console.WriteLine($"[OPTIONS] Toggle: {optionsItems[optionsIndex]}");
             }
             // BACK → PAUSE
-            else if ( p1.Back)
+            else if ( i.Back)
             {
                 State = MenuState.Pause;
                 Console.WriteLine("[OPTIONS] Back to Pause");
@@ -349,7 +371,7 @@ namespace Tetris
                 2 => Program.Options.HoldPiece,
                 3 => Program.Options.NextPiece,
                 4 => Program.Options.HardDrop,
-                5 => Program.Options.GarbegeLines,
+                5 => Program.Options.GarbageLines,
                 6 => Program.Options.FirstPlayerWins,
                 7 => Program.Options.InfiniteLevel,
                 _ => false
@@ -366,7 +388,7 @@ namespace Tetris
                 case 2: Program.Options.HoldPiece =         !Program.Options.HoldPiece; break;
                 case 3: Program.Options.NextPiece =         !Program.Options.NextPiece; break;
                 case 4: Program.Options.HardDrop =          !Program.Options.HardDrop; break;
-                case 5: Program.Options.GarbegeLines =      !Program.Options.GarbegeLines; break;
+                case 5: Program.Options.GarbageLines =      !Program.Options.GarbageLines; break;
                 case 6: Program.Options.FirstPlayerWins =   !Program.Options.FirstPlayerWins; break;
                 case 7: Program.Options.InfiniteLevel =     !Program.Options.InfiniteLevel; break;
             }
@@ -418,15 +440,15 @@ namespace Tetris
             }
 
             // Navigation
-            if (p1.Up) keyIndex = (keyIndex - 1 + keyNames.Length) % keyNames.Length;
-            if (p1.Down) keyIndex = (keyIndex + 1) % keyNames.Length;
+            if (p1.Up || p2.Up) keyIndex = (keyIndex - 1 + keyNames.Length) % keyNames.Length;
+            if (p1.Down || p2.Down) keyIndex = (keyIndex + 1) % keyNames.Length;
 
             // Toggle between Player 1 and Player 2 bindings using Left/Right
-            if (p1.Left || p1.Right)
+            if (p1.Left || p1.Right || p2.Left ||p2.Right)
                 editingPlayer2 = !editingPlayer2;
 
-            if (p1.Confirm) isListening = true;
-            if (p1.Back) State = MenuState.Pause;
+            if (p1.Confirm || p2.Confirm) isListening = true;
+            if (p1.Back || p2.Back) State = MenuState.Pause;
         }
 
         private void ApplyNewKey(Keys newKey)

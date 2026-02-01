@@ -34,6 +34,7 @@ namespace Tetris
             new(1,1,0), new(0,1,0), new(0.6f,0,0.6f), new(1,0,0)
         };
 
+        Random rand = new Random();
         public TetrisWindow(GameWindowSettings g, NativeWindowSettings n) : base(g, n) { }
 
         protected override void OnLoad()
@@ -103,7 +104,7 @@ namespace Tetris
             // Player 0: update only when in Playing state
             if (menu.Player[0] == PlayerState.Playing)
             {
-                game0.Update(e.Time, input0);
+                game0.Update((float)e.Time, input0);
                 if (game0.GameOver)
                     menu.Player[0] = PlayerState.GameOver;
             }
@@ -112,10 +113,11 @@ namespace Tetris
             // Player 1: update only when in Playing state
             if (menu.Player[1] == PlayerState.Playing)
             {
-                game1.Update(e.Time, input1);
+                game1.Update((float)e.Time, input1);
                 if (game1.GameOver)
                     menu.Player[1] = PlayerState.GameOver;
             }
+
 
             bool vs =
                 menu.Player[0] != PlayerState.Idle &&
@@ -123,7 +125,7 @@ namespace Tetris
             bool bothPlaying =
                 menu.Player[0] == PlayerState.Playing &&
                 menu.Player[1] == PlayerState.Playing;
-            if (Program.Options.GarbegeLines && bothPlaying)
+            if (Program.Options.GarbageLines && bothPlaying)
             {
                 int g0 = game0.ConsumeOutgoingGarbage();
                 if (g0 > 0 && menu.Playing[1])
@@ -132,13 +134,13 @@ namespace Tetris
                 int g1 = game1.ConsumeOutgoingGarbage();
                 if (g1 > 0 && menu.Playing[0])
                     game0.QueueIncomingGarbage(g1);
-
-                int diff = game0.Score - game1.Score;
-                game0.ScoreDelta = diff;
-                game1.ScoreDelta = -diff;
             }
             else if (vs)
             {
+                int diff = game0.Score - game1.Score;
+                game0.ScoreDelta = diff;
+                game1.ScoreDelta = -diff;
+
                 if (Program.Options.FirstPlayerWins && !game0.IsMatchResolved &&
                      (menu.Player[0] == PlayerState.GameOver || menu.Player[1] == PlayerState.GameOver)
                      )
@@ -154,6 +156,9 @@ namespace Tetris
 
                     menu.Player[0] = PlayerState.GameOver;
                     menu.Player[1] = PlayerState.GameOver;
+
+                    game0.IsMatchResolved = true;
+                    game1.IsMatchResolved = true;
 
                     Console.WriteLine("[VS] Match ended by first death");
                     Console.WriteLine($"[MATCH] SCORE {menu.MatchWins[0]} - {menu.MatchWins[1]}");
@@ -198,6 +203,7 @@ namespace Tetris
         // null = restart all non-idle players (used by the pause menu 'RESTART' item)
         void HandleRestart(int? player)
         {
+            int new_seed = rand.Next();
             if (menu.State == MenuState.Countdown)
                 return;
             // Called when MenuManager invokes OnRestartRequested.
@@ -209,7 +215,7 @@ namespace Tetris
                 if (menu.Player[0] != PlayerState.Idle)
                 {
                     Console.WriteLine("[RESTART] Restarting player 0");
-                    game0.Restart();
+                    game0.Restart(new_seed);
 
                     // if needed, clear queued garbage or other per-game transient state here
                     // e.g. game0.ClearPendingGarbage();
@@ -218,11 +224,10 @@ namespace Tetris
                 if (menu.Player[1] != PlayerState.Idle)
                 {
                     Console.WriteLine("[RESTART] Restarting player 1");
-                    game1.Restart();
+                    game1.Restart(new_seed);
 
                     // e.g. game1.ClearPendingGarbage();
                 }
-
                 return;
             }
 
@@ -231,13 +236,13 @@ namespace Tetris
             if (p == 0)
             {
                 Console.WriteLine("[RESTART] Restarting player 0 (single)");
-                game0.Restart();
+                game0.Restart(new_seed);
                 // optional: game0.ClearPendingGarbage();
             }
             else if (p == 1)
             {
                 Console.WriteLine("[RESTART] Restarting player 1 (single)");
-                game1.Restart();
+                game1.Restart(new_seed);
                 // optional: game1.ClearPendingGarbage();
             }
         }

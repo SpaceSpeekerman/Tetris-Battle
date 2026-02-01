@@ -90,14 +90,14 @@ namespace Tetris
         {
             return new MenuInput
             {
-                Up = kb.IsKeyPressed(Keys.Up) || js.ButtonPressed(GamepadButton.DPadUp),
-                Down = kb.IsKeyPressed(Keys.Down) || js.ButtonPressed(GamepadButton.DPadDown),
-                Left = kb.IsKeyPressed(Keys.Left) || js.ButtonPressed(GamepadButton.DPadLeft),
-                Right = kb.IsKeyPressed(Keys.Right) || js.ButtonPressed(GamepadButton.DPadRight),
+                Up = kb.IsKeyPressed(Keys.Up) || js.ButtonPressed(GamepadButton.DPadUp) || js.ButtonPressed(GamepadButton.LeftStickUp),
+                Down = kb.IsKeyPressed(Keys.Down) || js.ButtonPressed(GamepadButton.DPadDown) || js.ButtonPressed(GamepadButton.LeftStickDown),
+                Left = kb.IsKeyPressed(Keys.Left) || js.ButtonPressed(GamepadButton.DPadLeft) || js.ButtonPressed(GamepadButton.LeftStickLeft),
+                Right = kb.IsKeyPressed(Keys.Right) || js.ButtonPressed(GamepadButton.DPadRight) || js.ButtonPressed(GamepadButton.LeftStickRight),
 
                 Confirm = kb.IsKeyPressed(Keys.Enter) || js.ButtonPressed(GamepadButton.A),
-                Back = kb.IsKeyPressed(Keys.Escape) || js.ButtonPressed(GamepadButton.Back),
-                Start = kb.IsKeyPressed(Keys.Enter) || js.ButtonPressed(GamepadButton.Start),
+                Back = kb.IsKeyPressed(Keys.Escape) || js.ButtonPressed(GamepadButton.Back) || js.ButtonPressed(GamepadButton.B),
+                Start = kb.IsKeyPressed(Keys.Enter) || js.ButtonPressed(GamepadButton.Start), // js.button.B ???
             };
         }
     }

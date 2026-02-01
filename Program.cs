@@ -30,8 +30,9 @@ namespace Tetris
             public bool HoldPiece;
             public bool NextPiece;
             public bool HardDrop;
+            public bool LockDelay;
 
-            public bool GarbegeLines;
+            public bool GarbageLines;
             public bool FirstPlayerWins;
             public bool InfiniteLevel;
 
@@ -61,9 +62,11 @@ namespace Tetris
             HoldPiece = true,
             NextPiece = true,
             HardDrop = true,
-            GarbegeLines = true,
-            FirstPlayerWins = false,
+            LockDelay = true,
+            GarbageLines = true,
+            FirstPlayerWins = true,
             InfiniteLevel = false
         };
     }
+
 }

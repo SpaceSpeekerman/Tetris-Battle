@@ -28,10 +28,21 @@ namespace Tetris
         public int OffsetX;
         public Vector2i[] Blocks;
 
-        double fallTimer;
-        double moveTimer;
+        float fallTimer;
+        private float lockTimer = 0f;       // conta quanto tempo il pezzo è fermo
+        private float LOCK_DELAY = 0.333f; // mezzo secondo di margine
 
-        const double MOVE_REPEAT = 0.08;
+        private float moveRepeatTimer;
+        private bool isMoving; // Tracks if a key was already being held
+        private float DAS_DELAY = 0.1f;  // Delay before repeating (200ms)
+        private float ARR_RATE = 0.08f;  // Speed of repetition (50ms)
+
+        // How fast the game starts (0.8s per drop)
+        private float startInterval = 0.8f;
+        // The "multiplier" (0.9 means each level is 90% the duration of the last)
+        private float speedMultiplier = 0.88f;
+        // A "floor" to ensure it never becomes physically impossible to play
+        private float minInterval = 0.05f;
 
         public int Score;
         public int CurrentLevel;
@@ -71,59 +82,130 @@ namespace Tetris
 
         public TetrisGame()
         {
+            // 1. Load settings from file
+            GameSettings settings = new GameSettings("settings.txt");
+
+            // 2. Assign values
+            this.Width = settings.Width;
+            this.Height = settings.Height;
+            this.LOCK_DELAY = settings.LockDelay;
+            this.DAS_DELAY = settings.DasDelay;
+            this.ARR_RATE = settings.ArrRate;
+
+            startInterval = settings.StartSpeed;
+            speedMultiplier = settings.LevelIncrement;
+            minInterval = settings.MinSpeed;
+
+            if (settings.PieceColors.Count > 0)
+                this.colors = settings.PieceColors.ToArray();
+
+            // 3. Initialize game
             Next = rng.Next(7);
             Grid = new int[Width, Height];
             Spawn();
         }
-
-        public void Update(double dt, TetrisInput i)
+        public void Update(float dt, TetrisInput i)
         {
             if (GameOver) return;
 
-            // LEFT / RIGHT hold movement
-            moveTimer += dt;
-            if (moveTimer >= MOVE_REPEAT)
+            // --- 1. LATERAL MOVEMENT (DAS/ARR) ---
+            bool moveLeft = i.Left;
+            bool moveRight = i.Right;
+
+            if (!moveLeft && !moveRight)
             {
-                if (i.Left) TryMove(new Vector2i(-1, 0));
-                if (i.Right) TryMove(new Vector2i(1, 0));
-                moveTimer = 0;
+                isMoving = false;
+                moveRepeatTimer = 0;
+            }
+            else
+            {
+                if (!isMoving)
+                {
+                    if (moveLeft) TryMove(new Vector2i(-1, 0));
+                    if (moveRight) TryMove(new Vector2i(1, 0));
+                    isMoving = true;
+                    moveRepeatTimer = 0;
+                }
+                else
+                {
+                    moveRepeatTimer += dt;
+                    if (moveRepeatTimer >= DAS_DELAY)
+                    {
+                        if (moveRepeatTimer >= DAS_DELAY + ARR_RATE)
+                        {
+                            if (moveLeft) TryMove(new Vector2i(-1, 0));
+                            if (moveRight) TryMove(new Vector2i(1, 0));
+                            moveRepeatTimer = DAS_DELAY;
+                        }
+                    }
+                }
             }
 
-            if (i.RotateCCW) TryRotate();
-            if (i.RotateCW) TryRotate(false);
+            // --- 2. ROTATION & ACTIONS ---
+            if (i.RotateCCW) { TryRotate(); lockTimer = 0; } // Reset lock on rotate
+            if (i.RotateCW) { TryRotate(false); lockTimer = 0; }
+
             if (i.Hold && Program.Options.HoldPiece) HoldPiece();
 
             if (i.HardDrop && Program.Options.HardDrop)
             {
-                //AduioLibrary.dashSound.Play();
                 int dist = 0;
                 while (!Collide(Pos + Vector2i.UnitY * -1, Blocks))
                 {
                     Pos.Y--;
                     dist++;
                 }
-                dropDistance += dist; // hard drop bonus
+                dropDistance += dist;
                 Lock();
+                return;
             }
 
+            // --- 3. LEVEL & GRAVITY CALCULATION ---
             CurrentLevel = Lines / LinesPerLevelIncrease;
-            float level_increment = 0.05f;
 
-            // SOFT DROP (down held)
-            float interval = i.Down ? 0.05f : 0.6f;
-            interval = Program.Options.InfiniteLevel ? interval : interval - (level_increment * CurrentLevel);
-
-            fallTimer += dt;
-            if (fallTimer >= interval)
+            
+            if (!Program.Options.InfiniteLevel)
             {
-                fallTimer = 0;
-                if (TryMove(new Vector2i(0, -1)))
-                {
-                    if (i.Down) dropDistance++;   // soft drop bonus
-                }
-                else Lock();
+                // Exponentially faster: StartInterval * (0.88 ^ Level)
+                startInterval = 0.8f * MathF.Pow(speedMultiplier, CurrentLevel);
+                if (startInterval < minInterval) startInterval = minInterval;
             }
 
+            // Soft drop is either 0.05s or half the current speed (whichever is faster)
+            float interval = i.Down ? MathF.Min(minInterval, startInterval / 2f) : startInterval;
+
+            // --- 4. FALL & LOCK LOGIC ---
+            fallTimer += dt;
+
+            // IMPORTANT: Check if the piece is currently touching the ground
+            bool touchingGround = Collide(Pos + new Vector2i(0, -1), Blocks);
+
+            if (touchingGround)
+            {
+                // If on ground, we don't wait for fallTimer. We tick the lockTimer every frame.
+                lockTimer += dt;
+
+                if (lockTimer >= LOCK_DELAY || !Program.Options.LockDelay)
+                {
+                    Lock();
+                    lockTimer = 0;
+                    fallTimer = 0;
+                    return;
+                }
+            }
+            else
+            {
+                // Piece is in the air
+                if (fallTimer >= interval)
+                {
+                    fallTimer = 0;
+                    bool moved = TryMove(new Vector2i(0, -1));
+                    if (moved && i.Down) dropDistance++;
+                }
+
+                // Only reset lockTimer if we are truly in the air
+                lockTimer = 0;
+            }
         }
         public void Render(int shader, Texture texture, TextRenderer text, int vao, int vbo)
         {
@@ -306,12 +388,13 @@ namespace Tetris
                     text.Print("GAME OVER", OffsetX + 4, 14, 1.2f, new Vector4(1, 0, 0, 1), Vector4.Zero);
             }
         }
-        public void Restart()
+        public void Restart(int Seed)
         {
             Grid = new int[Width, Height];
             GameOver = false;
             Hold = -1;
             holdUsed = false;
+            rng = new Random(Seed);
             Next = rng.Next(7);
             Score = 0;
             Lines = 0;
@@ -526,36 +609,37 @@ namespace Tetris
             }
             return false;
         }
-        void TryRotate(bool rotatioCCW=true)
+        void TryRotate(bool rotateCCW = true)
         {
             AduioLibrary.rotateSound.Play();
 
             // O piece: no rotation
-            if (Current == 3)
-                return;
+            if (Current == 3) return;
 
             Vector2i[] rotated = new Vector2i[4];
 
-            // ===== I PIECE =====
-            if (Current == 0)
+            // ===== S, Z, and I PIECES (2-stage toggle) =====
+            if (Current == 0 || Current == 2 || Current == 4)
             {
-                bool horizontal = Blocks[0].Y == Blocks[1].Y;
-                if (horizontal)
-                    rotated = new[]
-                    {
-                    new Vector2i(1,0),
-                    new Vector2i(1,1),
-                    new Vector2i(1,2),
-                    new Vector2i(1,3)
-                };
+                // We check if the piece is currently "Vertical" 
+                // by looking at the relationship between the first two blocks.
+                bool isVertical = Blocks[0].X == Blocks[1].X;
+
+                if (isVertical)
+                {
+                    // Switch to Horizontal (Original Shape)
+                    rotated = Shapes[Current];
+                }
                 else
-                    rotated = new[]
-                    {
-                    new Vector2i(0,1),
-                    new Vector2i(1,1),
-                    new Vector2i(2,1),
-                    new Vector2i(3,1)
-                };
+                {
+                    // Switch to Vertical
+                    if (Current == 0) // I Piece
+                        rotated = new[] { new Vector2i(2, 0), new Vector2i(2, 1), new Vector2i(2, 2), new Vector2i(2, 3) };
+                    else if (Current == 2) // Z Piece
+                        rotated = new[] { new Vector2i(1, 0), new Vector2i(1, 1), new Vector2i(0, 1), new Vector2i(0, 2) };
+                    else // S Piece (Current == 4)
+                        rotated = new[] { new Vector2i(0, 0), new Vector2i(0, 1), new Vector2i(1, 1), new Vector2i(1, 2) };
+                }
             }
             // ===== OTHER PIECES =====
             else
@@ -563,16 +647,55 @@ namespace Tetris
                 for (int i = 0; i < 4; i++)
                 {
                     var b = Blocks[i];
-
-                    rotated[i] = rotatioCCW
+                    rotated[i] = rotateCCW
                         ? new Vector2i(b.Y, -b.X + 2)
                         : new Vector2i(-b.Y + 2, b.X);
                 }
             }
 
+            // 1. If it doesn't collide at all, just rotate.
             if (!Collide(Pos, rotated))
+            {
                 Blocks = rotated;
+                return;
+            }
+
+            // 2. CHECK: Is it colliding with the stack? 
+            // If even one block overlaps the stack (Grid != 0), we block the kick entirely.
+            bool hitsStack = false;
+            foreach (var b in rotated)
+            {
+                int x = Pos.X + b.X;
+                int y = Pos.Y + b.Y;
+                // Check if within grid bounds AND hits a locked block
+                if (x >= 0 && x < Width && y >= 0 && y < Height)
+                {
+                    if (Grid[x, y] != 0)
+                    {
+                        hitsStack = true;
+                        break;
+                    }
+                }
+            }
+
+            // If it hit the stack, stop here. No kick allowed.
+            if (hitsStack) return;
+
+            // 3. If it only hit the borders (and not the stack), try the kicks.
+            int[] offsets = { 1, -1, 2, -2 };
+            foreach (var xOffset in offsets)
+            {
+                Vector2i testPos = Pos + new Vector2i(xOffset, 0);
+                if (!Collide(testPos, rotated))
+                {
+                    Pos = testPos;
+                    Blocks = rotated;
+                    return;
+                }
+            }
+            // se tutti falliscono → rotazione bloccata
         }
+
         bool Collide(Vector2i p, Vector2i[] b)
         {
             foreach (var c in b)
