@@ -16,6 +16,7 @@ namespace Tetris
 
         public int[,] Grid;
         public bool GameOver { get; private set; }
+        public bool IsMatchResolved = false;
         bool isWinner;
 
         public int Current;
@@ -29,22 +30,25 @@ namespace Tetris
 
         double fallTimer;
         double moveTimer;
-        double interval = 0.6;
 
         const double MOVE_REPEAT = 0.08;
 
         public int Score;
         public int CurrentLevel;
+        public int ScoreDelta;
         public int Lines;
         public int TetrisCount;
         public int LinesPerLevelIncrease = 10;
         int dropDistance;
+
         private int totalClearEvents;
+
+        public bool DidTetrisThisTurn;
+
 
         Queue<int> outgoingGarbage = new();
         Queue<int> incomingGarbage = new();
 
-        public bool DidTetrisThisTurn;
 
         Random rng = new Random();
 
@@ -76,8 +80,7 @@ namespace Tetris
         {
             if (GameOver) return;
 
-            // SOFT DROP (down held)
-            interval = i.Down ? 0.05 : 0.6;
+            
 
             // LEFT / RIGHT hold movement
             moveTimer += dt;
@@ -90,9 +93,9 @@ namespace Tetris
 
             if (i.RotateCCW) TryRotate();
             if (i.RotateCW) TryRotate(false);
-            if (i.Hold) HoldPiece();
+            if (i.Hold && Program.Options.HoldPiece) HoldPiece();
 
-            if (i.HardDrop)
+            if (i.HardDrop && Program.Options.HardDrop)
             {
                 //AduioLibrary.dashSound.Play();
                 int dist = 0;
@@ -107,8 +110,13 @@ namespace Tetris
 
             CurrentLevel = Lines / LinesPerLevelIncrease;
             float level_increment = 0.05f;
+
+            // SOFT DROP (down held)
+            float interval = i.Down ? 0.05f : 0.6f;
+            interval = Program.Options.InfiniteLevel ? interval : interval - (level_increment * CurrentLevel);
+
             fallTimer += dt;
-            if (fallTimer >= (interval - (level_increment * CurrentLevel)))
+            if (fallTimer >= interval)
             {
                 fallTimer = 0;
                 if (TryMove(new Vector2i(0, -1)))
@@ -157,13 +165,16 @@ namespace Tetris
 
 
             // GHOST PIECE
-            int ghostY = GetDropY();
-            Vector3 ghostColor = colors[Current + 1] * 0.3f;
-
-            foreach (var b in Blocks)
+            if(Program.Options.GhostPiece)
             {
-                // Use shapeIndex 3 for a specific "ghost" texture, or same as Current
-                Cell(Pos.X + b.X+ OffsetX, ghostY + b.Y, ghostColor, 3);
+                int ghostY = GetDropY();
+                Vector3 ghostColor = colors[Current + 1] * 0.3f;
+
+                foreach (var b in Blocks)
+                {
+                    // Use shapeIndex 3 for a specific "ghost" texture, or same as Current
+                    Cell(Pos.X + b.X + OffsetX, ghostY + b.Y, ghostColor, 3);
+                }
             }
 
             // STACK
@@ -188,18 +199,21 @@ namespace Tetris
                     Vector3.One,
                     4);
             // NEXT PIECE
-            int nextX = 13 + OffsetX;
-            int nextY = 14;
-
-            foreach (var b in TetrisGame.Shapes[Next])
+            if(Program.Options.NextPiece)
             {
-                Cell(nextX + b.X, nextY + b.Y,
-                     colors[Next + 1],
-                     Next % 3);
+                int nextX = 13 + OffsetX;
+                int nextY = 14;
+
+                    foreach (var b in TetrisGame.Shapes[Next])
+                    {
+                        Cell(nextX + b.X, nextY + b.Y,
+                             colors[Next + 1],
+                             Next % 3);
+                    }
             }
 
             // HOLD PIECE
-            if (Hold != -1)
+            if (Hold != -1 && Program.Options.HoldPiece)
             {
                 int holdX = 13 + OffsetX;
                 int holdY = 8;
@@ -212,7 +226,7 @@ namespace Tetris
                 }
             }
 
-                GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
             GL.BufferData(BufferTarget.ArrayBuffer, verts.Count * sizeof(float), verts.ToArray(), BufferUsageHint.DynamicDraw);
 
             GL.UseProgram(shader);
@@ -240,11 +254,28 @@ namespace Tetris
             text.Print(
                 $"Level: {CurrentLevel}\nSCORE: {Score}",
                 OffsetX + 14,
-                6,
+                5,
                 0.75f,
                 Vector4.One,
                 Vector4.Zero
             );
+            if (ScoreDelta != 0)
+            {
+                Vector4 col = ScoreDelta > 0
+                    ? new Vector4(0, 1, 0, 1)
+                    : new Vector4(1, 0, 0, 1);
+
+                string sign = ScoreDelta > 0 ? "+" : "";
+
+                text.Print(
+                    $"{sign}{ScoreDelta}",
+                    OffsetX + 14, 7,
+                    0.6f,
+                    col,
+                    Vector4.Zero
+                );
+            }
+
             text.Print(
                 $"NEXT",
                 OffsetX + 15,
@@ -271,14 +302,10 @@ namespace Tetris
             );
             if (GameOver)
             {
-                text.Print(
-                    isWinner ? "YOU WIN" : "GAME OVER",
-                    OffsetX + 4,
-                    14,
-                    1.2f,
-                    new Vector4(1, 0, 0, 1),
-                    Vector4.Zero
-                );
+                if (isWinner)
+                    text.Print("YOU WIN", OffsetX + 4, 14, 1.2f, new Vector4(0, 1, 0, 1), Vector4.Zero);
+                else
+                    text.Print("GAME OVER", OffsetX + 4, 14, 1.2f, new Vector4(1, 0, 0, 1), Vector4.Zero);
             }
         }
         public void Restart()
@@ -290,13 +317,17 @@ namespace Tetris
             Next = rng.Next(7);
             Score = 0;
             Lines = 0;
+            ScoreDelta = 0;
             totalClearEvents = 0;
             TetrisCount = 0;
+            incomingGarbage = new();
+            outgoingGarbage = new();
+            IsMatchResolved = false;
+            isWinner = false;
             Spawn();
         }
         public void SetGameOver(bool iswinner)
         {
-            if (GameOver) return;
             GameOver = true;
             isWinner = iswinner;
         }

@@ -117,21 +117,81 @@ namespace Tetris
                     menu.Player[1] = PlayerState.GameOver;
             }
 
-
             bool vs =
-            menu.Player[0] == PlayerState.Playing &&
-            menu.Player[1] == PlayerState.Playing;
-
-
-            if (vs && Program.Options.GarbegeLines)
+                menu.Player[0] != PlayerState.Idle &&
+                menu.Player[1] != PlayerState.Idle;
+            bool bothPlaying =
+                menu.Player[0] == PlayerState.Playing &&
+                menu.Player[1] == PlayerState.Playing;
+            if (Program.Options.GarbegeLines && bothPlaying)
             {
                 int g0 = game0.ConsumeOutgoingGarbage();
-                if (g0 > 0)
+                if (g0 > 0 && menu.Playing[1])
                     game1.QueueIncomingGarbage(g0);
 
                 int g1 = game1.ConsumeOutgoingGarbage();
-                if (g1 > 0)
+                if (g1 > 0 && menu.Playing[0])
                     game0.QueueIncomingGarbage(g1);
+            }
+            else if (vs)
+            {
+                if (Program.Options.FirstPlayerWins && !game0.IsMatchResolved &&
+                     (menu.Player[0] == PlayerState.GameOver || menu.Player[1] == PlayerState.GameOver)
+                     )
+                {
+                    bool p0Lost = menu.Player[0] == PlayerState.GameOver;
+                    bool p1Lost = menu.Player[1] == PlayerState.GameOver;
+
+                    if (!p0Lost) menu.MatchWins[0]++;
+                    if (!p1Lost) menu.MatchWins[1]++;
+                    // Set outcome visivo
+                    game0.SetGameOver(!p0Lost);
+                    game1.SetGameOver(!p1Lost);
+
+                    menu.Player[0] = PlayerState.GameOver;
+                    menu.Player[1] = PlayerState.GameOver;
+
+                    Console.WriteLine("[VS] Match ended by first death");
+                    Console.WriteLine($"[MATCH] SCORE {menu.MatchWins[0]} - {menu.MatchWins[1]}");
+                }
+                else if(
+                    !Program.Options.FirstPlayerWins &&
+                    menu.Player[0] == PlayerState.GameOver &&
+                    menu.Player[1] == PlayerState.GameOver
+                    )
+                {
+                    // Match already resolved?
+                    if (!game0.IsMatchResolved)   // flag semplice, vedi sotto
+                    {
+                        if (game0.Score > game1.Score)
+                        {
+                            game0.SetGameOver(true);
+                            game1.SetGameOver(false);
+                            menu.MatchWins[0]++;
+                        }
+                        else if (game1.Score > game0.Score)
+                        {
+                            game0.SetGameOver(false);
+                            game1.SetGameOver(true);
+                            menu.MatchWins[1]++;
+                        }
+                        else
+                        {
+                            // pareggio → entrambi perdono o nessun winner
+                            game0.SetGameOver(true);
+                            game1.SetGameOver(true);
+                        }
+
+                        game0.IsMatchResolved = true;
+                        game1.IsMatchResolved = true;
+
+                        Console.WriteLine("[VS] Match ended by score");
+                    }
+
+                }
+                int diff = game0.Score - game1.Score;
+                game0.ScoreDelta = diff;
+                game1.ScoreDelta = -diff;
             }
         }
         // Called when the menu requests a restart. The parameter indicates which player to restart
@@ -193,11 +253,11 @@ namespace Tetris
 
 
             // Overlay "PRESS PLAY" on any board that is not currently playing
-            if (!menu.Playing[0])
+            if (menu.Player[1] == PlayerState.Idle)
             {
                 text.Print("PRESS PLAY", game0.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
             }
-            if (!menu.Playing[1])
+            if (menu.Player[1] == PlayerState.Idle)
             {
                 text.Print("PRESS PLAY", game1.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
             }
@@ -206,6 +266,12 @@ namespace Tetris
             // Draw menu (pause / countdown) on top
             menu.Render(text);
 
+            text.Print(
+                $"{menu.MatchWins[0]} - {menu.MatchWins[1]}",
+                14, 1, 0.8f,
+                Vector4.One,
+                Vector4.Zero
+            );
 
             SwapBuffers();
         }

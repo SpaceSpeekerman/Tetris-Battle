@@ -27,6 +27,8 @@ namespace Tetris
             PlayerState.Idle,
             PlayerState.Idle
         };
+        public int[] MatchWins = new int[2] { 0, 0 };
+
         public bool GameplayEnabled => State == MenuState.None;
         public bool MultiplayerActive { get; private set; }
 
@@ -85,12 +87,11 @@ namespace Tetris
         {
             switch (State)
             {
-                case MenuState.Ready:
-                    text.Print("PRESS START", 12, 14, 0.75f, Vector4.One, Vector4.Zero);
-                    break;
-
+                //case MenuState.Ready:
+                //    text.Print("PRESS START", 12, 14, 0.75f, Vector4.One, Vector4.Zero);
+                //    break;
                 case MenuState.Countdown:
-                    text.Print(((int)Math.Ceiling(countdown)).ToString(), 16, 14, 1.2f, Vector4.One, Vector4.Zero);
+                    text.Print(((int)Math.Ceiling(countdown)).ToString(), 20, 14, 1.2f, Vector4.One, Vector4.Zero);
                     break;
 
                 case MenuState.Pause:
