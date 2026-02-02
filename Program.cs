@@ -10,6 +10,7 @@ namespace Tetris
 {
     class Program
     {
+        public static TetrisWindow win;
         static void Main()
         {
             var gws = new GameWindowSettings { UpdateFrequency = 60 };
@@ -19,10 +20,13 @@ namespace Tetris
                 Title = "Tetris"
             };
             AduioLibrary.Init();
-            using var win = new TetrisWindow(gws, nws);
+            win = new TetrisWindow(gws, nws);
             win.Run();
         }
-        
+        public static int GetScore(int player)
+        {
+            return win.GetScore(player);
+        }
         public struct GameOptions
         {
             public bool SoundOn;

@@ -2,15 +2,15 @@
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Xml.Linq;
+using System.IO;
+using System.Linq;
 using Tetris.OpenGL;
 using Tetris.Audio;
 
 namespace Tetris
 {
     // ===== MENU / OPTIONS =====
-    public enum MenuState { None, Pause, Options, Ready, KeyConfig, Countdown }
+    public enum MenuState { None, Pause, Options, Ready, KeyConfig, GamepadConfig, Countdown, NameEntry }
     public enum PlayerState
     {
         Idle,       // non ha mai premuto START
@@ -18,7 +18,11 @@ namespace Tetris
         Paused,     // pausa
         GameOver    // morto, aspetta restart
     }
-
+    public class HighScoreEntry
+    {
+        public string Name { get; set; }
+        public int Score { get; set; }
+    }
     public class MenuManager
     {
         public MenuState State = MenuState.Ready;
@@ -39,15 +43,18 @@ namespace Tetris
         public event Action<int?> OnRestartRequested;
 
         int pauseIndex;
-        string[] pauseItems = { "RESUME", "RESTART", "RESET MATCH SCORES", "OPTIONS", "CONTROLS", "QUIT" };
+        string[] pauseItems = { "RESUME", "RESTART", "SAVE HIGHSCORE", "RESET MATCH SCORES", "OPTIONS", "QUIT" };
         int optionsIndex = 0;
-        string[] optionsItems = { "Sound", "Ghost Piece", "Hold Piece", "NextPiece",
-            "Hard Drop", "Garbage Lines", "First Player Wins", "Infinite Level" };
+        string[] optionsItems = {
+    "Sound", "Textured", "Ghost Piece", "Hold Piece", "NextPiece",
+    "Hard Drop", "Garbage Lines", "First Player Wins", "Infinite Level",
+    "CONFIGURE KEYBOARD", "CONFIGURE GAMEPAD" // New sub-menus
+};
 
         public bool[] Playing = new bool[2] { false, false };
         public int ActivePlayer = -1; // -1 = none, 0 = P1, 1 = P2
 
-        public void Update(double dt, MenuInput p1, MenuInput p2, KeyboardState kb)
+        public void Update(double dt, MenuInput p1, MenuInput p2, KeyboardState kb, GamepadState gp1, GamepadState gp2)
         {
             MenuInput input = new MenuInput()
             {
@@ -85,11 +92,19 @@ namespace Tetris
             {
                 UpdateOptionsMenu(input);
             }
+            else if (State == MenuState.NameEntry)
+            {
+                UpdateNameEntry(input);
+            }
             else if (State == MenuState.KeyConfig)
             {
                 UpdateKeyConfig(kb, p1, p2);
             }
-
+            else if (State == MenuState.GamepadConfig)
+            {
+                // You will need to pass your gamepad state here
+                UpdateGamepadConfig(gp1, gp2, p1, p2);
+            }
             // Sync bool helpers for external access
             for (int i = 0; i < 2; i++)
                 Playing[i] = (Player[i] == PlayerState.Playing);
@@ -111,13 +126,28 @@ namespace Tetris
                             i == pauseIndex ? new Vector4(1, 1, 0, 1) : Vector4.One,
                             Vector4.Zero);
                     break;
+                case MenuState.NameEntry:
+                    RenderNameEntry(text);
+                    break;
                 case MenuState.Options:
                     RenderOptionsMenu(text);
                     break;
                 case MenuState.KeyConfig:
                     RenderKeyConfig(text);
                     break;
+                case MenuState.GamepadConfig:
+                    RenderGamepadConfig(text);
+                    break;
             }
+        }
+        void StartCountdown()
+        {
+            State = MenuState.Countdown;
+            countdown = CountdownDuration;
+
+            // Sincronizza subito la UI
+            for (int i = 0; i < 2; i++)
+                Playing[i] = (Player[i] == PlayerState.Playing);
         }
         public void HandleStart(int i)
         {
@@ -219,30 +249,23 @@ namespace Tetris
                     OnRestartRequested?.Invoke(null);
                     StartCountdown();
                     break;
-                case 2: // RESET SCORES
+                case 2: // SAVE HIGHSCORE
+                        // Check which player had the higher score
+                    int p1Score = Program.GetScore(0);
+                    int p2Score = Program.GetScore(1);
+                    OpenNameEntry(Math.Max(p1Score, p2Score));
+                    break;
+                case 3: // RESET SCORES
                     MatchWins = [0, 0];
                     break;
-                case 3: // OPTIONS
+                case 4: // OPTIONS
                     State = MenuState.Options;
-                    break;
-
-                case 4: // CONTROLS
-                    State = MenuState.KeyConfig;
                     break;
 
                 case 5: // QUIT
                     Environment.Exit(0);
                     break;
             }
-        }
-        void StartCountdown()
-        {
-            State = MenuState.Countdown;
-            countdown = CountdownDuration;
-
-            // Sincronizza subito la UI
-            for (int i = 0; i < 2; i++)
-                Playing[i] = (Player[i] == PlayerState.Playing);
         }
         void UpdatePauseMenu(MenuInput i)
         {
@@ -275,24 +298,93 @@ namespace Tetris
             // REMOVED: "else if (p1.Start) ..." 
             // We removed the Resume check here because HandleStart already does it!
         }
-        public void ProcessStart(int player)
+        // HighScore
+        private string currentName = "AAA";
+        private int charIndex = 0; // 0, 1, or 2
+        private string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789! ";
+        private int alphabetIndex = 0;
+        private int scoreToSave = 0;
+
+        public void OpenNameEntry(int score)
         {
-            // se quel player non stava giocando → entra
-            if (!Playing[player])
+            scoreToSave = score;
+            currentName = "AAAAA";
+            charIndex = 0;
+            State = MenuState.NameEntry;
+        }
+        private List<HighScoreEntry> LoadHighScores()
+        {
+            string path = "highscore.txt";
+            if (!File.Exists(path)) return new List<HighScoreEntry>();
+
+            return File.ReadAllLines(path)
+                .Select(line => line.Split(','))
+                .Select(parts => new HighScoreEntry { Name = parts[0], Score = int.Parse(parts[1]) })
+                .OrderByDescending(s => s.Score)
+                .ToList();
+        }
+        void UpdateNameEntry(MenuInput input)
+        {
+            // 1. Change Character (Up/Down)
+            if (input.Up)
             {
-                Playing[player] = true;
-                ActivePlayer = player;
-                State = MenuState.Countdown;
-                countdown = CountdownDuration;
-                Console.WriteLine($"[MENU] Player {player + 1} joined");
-                return;
+                alphabetIndex = (alphabetIndex - 1 + alphabet.Length) % alphabet.Length;
+                UpdateNameChar();
+            }
+            if (input.Down)
+            {
+                alphabetIndex = (alphabetIndex + 1) % alphabet.Length;
+                UpdateNameChar();
             }
 
-            // se era attivo → pausa / resume
-            if (ActivePlayer == player)
+            // 2. Move Cursor (Left/Right)
+            if (input.Left) charIndex = Math.Max(0, charIndex - 1);
+            if (input.Right) charIndex = Math.Min(2, charIndex + 1);
+
+            // 3. Confirm (Confirm button)
+            if (input.Confirm)
             {
-                State = (State == MenuState.None) ? MenuState.Pause : MenuState.None;
+                SaveNewScore(currentName, scoreToSave);
+                State = MenuState.Pause; // Return to pause or a "High Score Board" state
             }
+            if (input.Back)
+            {
+                State = MenuState.Pause; // Return to pause
+            }
+        }
+
+        void UpdateNameChar()
+        {
+            char[] nameArr = currentName.ToCharArray();
+            nameArr[charIndex] = alphabet[alphabetIndex];
+            currentName = new string(nameArr);
+        }
+
+        void RenderNameEntry(TextRenderer text)
+        {
+            text.Print("NEW HIGH SCORE!", 10, 5, 1.2f, new Vector4(1, 1, 0, 1), Vector4.Zero);
+            text.Print(scoreToSave.ToString(), 15, 7, 1.0f, Vector4.One, Vector4.Zero);
+
+            // Render the name with a highlight on the active char
+            for (int i = 0; i < 5; i++)
+            {
+                Vector4 col = (i == charIndex) ? new Vector4(0, 1, 1, 1) : Vector4.One;
+                text.Print(currentName[i].ToString(), 14 + i * 2, 10, 2.0f, col, Vector4.Zero);
+
+                //// Draw an underline for the active char
+                //if (i == charIndex) text.Print("_", 14 + i * 2, 10.5f, 1.0f, col, Vector4.Zero);
+            }
+
+            text.Print("UP/DOWN: SELECT  LEFT/RIGHT: POSITION  ENTER: SAVE", 6, 15, 0.6f, Vector4.One, Vector4.Zero);
+        }
+        private void SaveNewScore(string name, int score)
+        {
+            var scores = LoadHighScores();
+            scores.Add(new HighScoreEntry { Name = name, Score = score });
+
+            // Sort, take top 10, and format for text file
+            var top10 = scores.OrderByDescending(s => s.Score).Take(10);
+            File.WriteAllLines("highscore.txt", top10.Select(s => $"{s.Name},{s.Score}"));
         }
         void RenderOptionsMenu(TextRenderer text)
         {
@@ -311,7 +403,8 @@ namespace Tetris
 
                 string line =
                     $"{(i == optionsIndex ? ">" : " ")}" +
-                    $"[{(value ? "*" : " ")}] {optionsItems[i]}";
+                    (i > 8 ? " " :$"[{(value ? "*" : " ")}]") +
+                    $"{optionsItems[i]}";
 
                 text.Print(
                     line,
@@ -335,31 +428,32 @@ namespace Tetris
         }
         void UpdateOptionsMenu(MenuInput i)
         {
-            // SU
-            if ( i.Up)
+            if (i.Up)
             {
-                optionsIndex--;
-                if (optionsIndex < 0)
-                    optionsIndex = optionsItems.Length - 1;
+                optionsIndex = (optionsIndex - 1 + optionsItems.Length) % optionsItems.Length;
             }
-            // GIÙ
-            else if ( i.Down)
+            else if (i.Down)
             {
-                optionsIndex++;
-                if (optionsIndex >= optionsItems.Length)
-                    optionsIndex = 0;
+                optionsIndex = (optionsIndex + 1) % optionsItems.Length;
             }
-            // TOGGLE (A / ENTER)
-            else if (i.Confirm )
+            else if (i.Confirm)
             {
-                ToggleOption(optionsIndex);
-                Console.WriteLine($"[OPTIONS] Toggle: {optionsItems[optionsIndex]}");
+                if (optionsIndex < 9)
+                {
+                    ToggleOption(optionsIndex);
+                }
+                else if (optionsIndex == 9)
+                {
+                    State = MenuState.KeyConfig; // Sub-menu Keyboard
+                }
+                else if (optionsIndex == 10)
+                {
+                    State = MenuState.GamepadConfig; // Sub-menu Gamepad
+                }
             }
-            // BACK → PAUSE
-            else if ( i.Back)
+            else if (i.Back)
             {
                 State = MenuState.Pause;
-                Console.WriteLine("[OPTIONS] Back to Pause");
             }
         }
         bool GetOptionValue(int index)
@@ -367,13 +461,14 @@ namespace Tetris
             return index switch
             {
                 0 => Program.Options.SoundOn,
-                1 => Program.Options.GhostPiece,
-                2 => Program.Options.HoldPiece,
-                3 => Program.Options.NextPiece,
-                4 => Program.Options.HardDrop,
-                5 => Program.Options.GarbageLines,
-                6 => Program.Options.FirstPlayerWins,
-                7 => Program.Options.InfiniteLevel,
+                1 => Program.Options.Textured,
+                2 => Program.Options.GhostPiece,
+                3 => Program.Options.HoldPiece,
+                4 => Program.Options.NextPiece,
+                5 => Program.Options.HardDrop,
+                6 => Program.Options.GarbageLines,
+                7 => Program.Options.FirstPlayerWins,
+                8 => Program.Options.InfiniteLevel,
                 _ => false
             };
         }
@@ -384,13 +479,14 @@ namespace Tetris
                 case 0: Program.Options.SoundOn =           !Program.Options.SoundOn;
                     AduioLibrary.Mute(!Program.Options.SoundOn);
                     break;
-                case 1: Program.Options.GhostPiece =        !Program.Options.GhostPiece; break;
-                case 2: Program.Options.HoldPiece =         !Program.Options.HoldPiece; break;
-                case 3: Program.Options.NextPiece =         !Program.Options.NextPiece; break;
-                case 4: Program.Options.HardDrop =          !Program.Options.HardDrop; break;
-                case 5: Program.Options.GarbageLines =      !Program.Options.GarbageLines; break;
-                case 6: Program.Options.FirstPlayerWins =   !Program.Options.FirstPlayerWins; break;
-                case 7: Program.Options.InfiniteLevel =     !Program.Options.InfiniteLevel; break;
+                case 1: Program.Options.Textured =        !Program.Options.GhostPiece; break;
+                case 2: Program.Options.GhostPiece =        !Program.Options.GhostPiece; break;
+                case 3: Program.Options.HoldPiece =         !Program.Options.HoldPiece; break;
+                case 4: Program.Options.NextPiece =         !Program.Options.NextPiece; break;
+                case 5: Program.Options.HardDrop =          !Program.Options.HardDrop; break;
+                case 6: Program.Options.GarbageLines =      !Program.Options.GarbageLines; break;
+                case 7: Program.Options.FirstPlayerWins =   !Program.Options.FirstPlayerWins; break;
+                case 8: Program.Options.InfiniteLevel =     !Program.Options.InfiniteLevel; break;
             }
         }
         // Inside Menu Class
@@ -448,7 +544,7 @@ namespace Tetris
                 editingPlayer2 = !editingPlayer2;
 
             if (p1.Confirm || p2.Confirm) isListening = true;
-            if (p1.Back || p2.Back) State = MenuState.Pause;
+            if (p1.Back || p2.Back) State = MenuState.Options;
         }
 
         private void ApplyNewKey(Keys newKey)
@@ -471,6 +567,97 @@ namespace Tetris
                 case 4: b.RotateCCW = key; break;
                 case 5: b.Hold = key; break;
                 case 6: b.HardDrop = key; break;
+            }
+        }
+
+        public void UpdateGamepadConfig(GamepadState pad1, GamepadState pad2, MenuInput p1, MenuInput p2)
+        {
+            if (isListening)
+            {
+                // Select which pad to listen to based on who we are editing
+                GamepadState activePad = editingPlayer2 ? pad2 : pad1;
+
+                // Check all buttons on the selected controller
+                foreach (GamepadButton b in Enum.GetValues(typeof(GamepadButton)))
+                {
+                    // Note: Using ButtonPressed (ensure this is your "JustPressed" logic)
+                    if (activePad.ButtonPressed(b))
+                    {
+                        ApplyNewGamepadButton(b); // This uses editingPlayer2 internally
+                        isListening = false;
+                        break;
+                    }
+                }
+                return;
+            }
+
+            // --- Standard Navigation ---
+            // Use MenuInput which already combines P1 and P2 inputs for navigation
+            if (p1.Up || p2.Up) keyIndex = (keyIndex - 1 + keyNames.Length) % keyNames.Length;
+            if (p1.Down || p2.Down) keyIndex = (keyIndex + 1) % keyNames.Length;
+
+            // Switch between editing P1 and P2
+            if (p1.Left || p1.Right || p2.Left || p2.Right)
+                editingPlayer2 = !editingPlayer2;
+
+            if (p1.Confirm || p2.Confirm) isListening = true;
+
+            // Return to Options sub-menu
+            if (p1.Back || p2.Back) State = MenuState.Options;
+        }
+        void RenderGamepadConfig(TextRenderer text)
+        {
+            text.Print("CONFIGURE GAMEPAD", 6, 2, 1.2f, Vector4.One, Vector4.Zero);
+
+            // Highlight the active player being edited
+            string playerHeader = editingPlayer2 ? "  PLAYER 1   > PLAYER 2 <" : "> PLAYER 1 <   PLAYER 2  ";
+            text.Print(playerHeader, 8, 4, 0.9f, new Vector4(0, 1, 1, 1), Vector4.Zero);
+
+            if (isListening)
+            {
+                text.Print($"PRESS BUTTON FOR {keyNames[keyIndex].ToUpper()}...", 10, 15, 0.7f, new Vector4(1, 0, 0, 1), Vector4.Zero);
+            }
+
+            var b = editingPlayer2 ? Program.Options.GamepadBindingsPlayer2 : Program.Options.GamepadBindingsPlayer1;
+
+            // Helper to get string representation of the first button in the array
+            string GetBtn(GamepadButton[] arr) => arr.Length > 0 ? arr[0].ToString() : "NONE";
+
+            string[] currentButtons = {
+        GetBtn(b.Left), GetBtn(b.Right), GetBtn(b.Down),
+        GetBtn(b.RotateCW), GetBtn(b.RotateCCW), GetBtn(b.Hold), GetBtn(b.HardDrop)
+    };
+
+            for (int i = 0; i < keyNames.Length; i++)
+            {
+                string line = $"{(i == keyIndex ? "> " : "  ")}{keyNames[i]}: {currentButtons[i]}";
+                Vector4 color = (i == keyIndex) ? (isListening ? new Vector4(1, 0, 0, 1) : new Vector4(1, 1, 0, 1)) : Vector4.One;
+                text.Print(line, 10, 6 + i * 1.5f, 0.8f, color, Vector4.Zero);
+            }
+        }
+        private void ApplyNewGamepadButton(GamepadButton newButton)
+        {
+            // Routing to the correct Global options object
+            var bindings = editingPlayer2 ? Program.Options.GamepadBindingsPlayer2 : Program.Options.GamepadBindingsPlayer1;
+            SetGamepadValue(bindings, keyIndex, newButton);
+
+            Console.WriteLine($"[MENU] Player {(editingPlayer2 ? 2 : 1)} bound {keyNames[keyIndex]} to {newButton}");
+        }
+
+        private void SetGamepadValue(GamepadBindings b, int index, GamepadButton button)
+        {
+            // Since your class uses arrays, we wrap the button in a new array
+            var btnArray = new GamepadButton[] { button };
+
+            switch (index)
+            {
+                case 0: b.Left = btnArray; break;
+                case 1: b.Right = btnArray; break;
+                case 2: b.Down = btnArray; break;
+                case 3: b.RotateCW = btnArray; break;
+                case 4: b.RotateCCW = btnArray; break;
+                case 5: b.Hold = btnArray; break;
+                case 6: b.HardDrop = btnArray; break;
             }
         }
     }

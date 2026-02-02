@@ -5,6 +5,7 @@ using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using System;
 using System.Collections.Generic;
+using System.Reflection.Metadata.Ecma335;
 using Tetris;
 using Tetris.OpenGL;
 
@@ -78,7 +79,7 @@ namespace Tetris
             var menuInput1 = MenuInputMapper.FromDevices(KeyboardState, js1);
 
             // Let menu tick (countdown, menus). Menu no longer processes Start presses itself.
-            menu.Update(e.Time, menuInput0, menuInput1, KeyboardState);
+            menu.Update(e.Time, menuInput0, menuInput1, KeyboardState, js0, js1);
 
             // --- Handle START centrally (join / pause / resume / restart requests)
             if (input0.Start) menu.HandleStart(0);
@@ -235,6 +236,14 @@ namespace Tetris
                 // optional: game1.ClearPendingGarbage();
             }
         }
+        public int GetScore(int player)
+        {
+            if (player == 0)
+                return game0.Score;
+            else if (player == 1)
+                return game1.Score;
+            return 0;
+        }
         protected override void OnRenderFrame(FrameEventArgs e)
         {
             GL.ClearColor(Color4.Black);
@@ -252,18 +261,16 @@ namespace Tetris
                     Vector4.One,
                     Vector4.Zero
                 );
+                // Overlay "PRESS PLAY" on any board that is not currently playing
+                if (menu.Player[0] == PlayerState.Idle)
+                {
+                    text.Print("PRESS PLAY", game0.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
+                }
+                if (menu.Player[1] == PlayerState.Idle)
+                {
+                    text.Print("PRESS PLAY", game1.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
+                }
             }
-
-            // Overlay "PRESS PLAY" on any board that is not currently playing
-            if (menu.Player[0] == PlayerState.Idle)
-            {
-                text.Print("PRESS PLAY", game0.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
-            }
-            if (menu.Player[1] == PlayerState.Idle)
-            {
-                text.Print("PRESS PLAY", game1.OffsetX + 4, 10, 1.0f, Vector4.One, Vector4.Zero);
-            }
-
 
             // Draw menu (pause / countdown) on top
             menu.Render(text);
