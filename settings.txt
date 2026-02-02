@@ -22,3 +22,6 @@ Color5=0,1,0
 Color6=0.6,0,0.6
 Color7=1,0,0
 Color8=0.5,0.5,0.5
+
+# HIGHSCORE
+# SPAM 5714

@@ -134,13 +134,14 @@ namespace Tetris
                 int g1 = game1.ConsumeOutgoingGarbage();
                 if (g1 > 0 && menu.Playing[0])
                     game0.QueueIncomingGarbage(g1);
-            }
-            else if (vs)
-            {
+
                 int diff = game0.Score - game1.Score;
                 game0.ScoreDelta = diff;
                 game1.ScoreDelta = -diff;
 
+            }
+            else if (vs)
+            {
                 if (Program.Options.FirstPlayerWins && !game0.IsMatchResolved &&
                      (menu.Player[0] == PlayerState.GameOver || menu.Player[1] == PlayerState.GameOver)
                      )
@@ -278,8 +279,6 @@ namespace Tetris
 
             // Draw menu (pause / countdown) on top
             menu.Render(text);
-
-            
 
             SwapBuffers();
         }

@@ -373,9 +373,9 @@ namespace Tetris
                 Vector4.Zero
             );
             text.Print(
-                $"Lines: {Lines}\nTetris rate: {GetTetrisRate().ToString("0.#")}%",
-                OffsetX + 1,
-                2.5f,
+                $"Lines: {Lines}\nTetris: {TetrisCount}\nRate: {GetTetrisRate().ToString("0.#")}%",
+                OffsetX + 14,
+                18,
                 0.75f,
                 Vector4.One,
                 Vector4.Zero
