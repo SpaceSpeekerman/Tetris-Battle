@@ -72,11 +72,11 @@ namespace Tetris
         public static readonly Vector2i[][] Shapes =
         {
             new[]{ new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1),new Vector2i(3,1)}, // I
-            new[]{ new Vector2i(0,0),new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1)}, // J
+            new[]{ new Vector2i(2,0),new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1)}, // L
             new[]{ new Vector2i(0,0),new Vector2i(1,0),new Vector2i(1,1),new Vector2i(2,1)}, // Z
             new[]{ new Vector2i(1,0),new Vector2i(2,0),new Vector2i(1,1),new Vector2i(2,1)}, // O
             new[]{ new Vector2i(1,0),new Vector2i(2,0),new Vector2i(0,1),new Vector2i(1,1)}, // S
-            new[]{ new Vector2i(2,0),new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1)}, // L
+            new[]{ new Vector2i(0,0),new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1)}, // J
             new[]{ new Vector2i(1,0),new Vector2i(0,1),new Vector2i(1,1),new Vector2i(2,1)}, // T
         };
 
@@ -210,120 +210,87 @@ namespace Tetris
         public void Render(int shader, Texture texture, TextRenderer text, int vao, int vbo)
         {
             var verts = new List<float>();
-            void Cell(float x, float y, Vector3 c, int shapeIndex)
-            {
-                float x0 = x;
-                float y0 = y;
-                float x1 = x + 1;
-                float y1 = y + 1;
 
-                // Assuming 5 sprites in a horizontal strip (3 shapes + 1 ghost + 1 border)
+            // blockType: 0-6 for shapes, 10 for ghost, 20 for wall
+            // shapeIndex: 0-2 for texture selection (as you had it)
+            void Cell(float x, float y, int blockType, int shapeIndex)
+            {
+                float x0 = x, y0 = y, x1 = x + 1, y1 = y + 1;
                 float atlasCount = 5;
                 float u0 = shapeIndex / atlasCount;
                 float u1 = (shapeIndex + 1) / atlasCount;
-                float v0 = 0.0f;
-                float v1 = 1.0f;
 
-                // TRI 1
-                Push(x0, y0, u0, v0, c);
-                Push(x1, y0, u1, v0, c);
-                Push(x1, y1, u1, v1, c);
-
-                // TRI 2
-                Push(x0, y0, u0, v0, c);
-                Push(x1, y1, u1, v1, c);
-                Push(x0, y1, u0, v1, c);
+                // Note: We are passing 'blockType' as a float to the shader's color attribute slot
+                Push(x0, y0, u0, 0.0f, blockType);
+                Push(x1, y0, u1, 0.0f, blockType);
+                Push(x1, y1, u1, 1.0f, blockType);
+                Push(x0, y0, u0, 0.0f, blockType);
+                Push(x1, y1, u1, 1.0f, blockType);
+                Push(x0, y1, u0, 1.0f, blockType);
             }
-            void Push(float x, float y, float u, float v, Vector3 c)
+
+            void Push(float x, float y, float u, float v, float type)
             {
-                verts.AddRange(new float[] {
-                    x, y,
-                    u, v,
-                    c.X, c.Y, c.Z
-                });
+                // Layout: Pos(2), UV(2), Type(1) -> Stride is 5 floats
+                verts.AddRange(new float[] { x, y, u, v, type });
             }
 
-
-            // GHOST PIECE
-            if(Program.Options.GhostPiece)
+            // GHOST
+            if (Program.Options.GhostPiece)
             {
                 int ghostY = GetDropY();
-                Vector3 ghostColor = colors[Current + 1] * 0.3f;
-
-                foreach (var b in Blocks)
-                {
-                    // Use shapeIndex 3 for a specific "ghost" texture, or same as Current
-                    Cell(Pos.X + b.X + OffsetX, ghostY + b.Y, ghostColor, 3);
-                }
+                foreach (var b in Blocks) Cell(Pos.X + b.X + OffsetX, ghostY + b.Y, 10, 3);
             }
 
-            // STACK
+            // STACK (Grid stores 1-7, we subtract 1 to get 0-6)
             for (int x = 0; x < Width; x++)
                 for (int y = 0; y < Height; y++)
                     if (Grid[x, y] != 0)
-                        Cell(x + OffsetX, y, colors[Grid[x, y]], (Grid[x, y] - 1) % 3);
+                        Cell(x + OffsetX, y, Grid[x, y] - 1, (Grid[x, y] - 1) % 3);
 
             // CURRENT
             foreach (var b in Blocks)
-                Cell(Pos.X + b.X+ OffsetX, Pos.Y + b.Y, colors[Current + 1], Current % 3);
+                Cell(Pos.X + b.X + OffsetX, Pos.Y + b.Y, Current, Current % 3);
 
-            // BORDI CAMPO
+            // WALLS
             for (int y = 0; y < Height; y++)
             {
-                Cell(-1 + OffsetX, y,
-                    Vector3.One, 4);
-                Cell(Width+ OffsetX, y, Vector3.One, 4);
+                Cell(-1 + OffsetX, y, 20, 4);
+                Cell(Width + OffsetX, y, 20, 4);
             }
-            for (int x = -1; x <= Width; x++)
-                Cell(x + OffsetX, -1,
-                    Vector3.One,
-                    4);
-            // NEXT PIECE
-            if(Program.Options.NextPiece)
-            {
-                int nextX = 13 + OffsetX;
-                int nextY = 14;
+            for (int x = -1; x <= Width; x++) Cell(x + OffsetX, -1, 20, 4);
 
-                    foreach (var b in TetrisGame.Shapes[Next])
-                    {
-                        Cell(nextX + b.X, nextY + b.Y,
-                             colors[Next + 1],
-                             Next % 3);
-                    }
-            }
+            // NEXT/HOLD
+            if (Program.Options.NextPiece)
+                foreach (var b in TetrisGame.Shapes[Next]) Cell(13 + OffsetX + b.X, 14 + b.Y, Next, Next % 3);
 
-            // HOLD PIECE
             if (Hold != -1 && Program.Options.HoldPiece)
-            {
-                int holdX = 13 + OffsetX;
-                int holdY = 8;
+                foreach (var b in TetrisGame.Shapes[Hold]) Cell(13 + OffsetX + b.X, 8 + b.Y, Hold, Hold % 3);
 
-                foreach (var b in TetrisGame.Shapes[Hold])
-                {
-                    Cell(holdX + b.X, holdY + b.Y,
-                         colors[Hold + 1],
-                         Hold % 3);
-                }
-            }
+            renderVAO(vbo, verts, texture, shader, vao);
 
+            PrintUI(text);
+        }
+        void renderVAO(int vbo, List<float> verts, Texture texture, int shader, int vao)
+        {
+            GL.Disable(EnableCap.DepthTest); // Ensure we use Painter's Algorithm (Order of drawing)
+            // Upload and Render
             GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
             GL.BufferData(BufferTarget.ArrayBuffer, verts.Count * sizeof(float), verts.ToArray(), BufferUsageHint.DynamicDraw);
 
             GL.UseProgram(shader);
             texture.Bind();
-            GL.Uniform1(GL.GetUniformLocation(shader, "uTex"), 0);
 
-            var c = colors[(CurrentLevel % (colors.Length-1))+1];
-            GL.Uniform4(GL.GetUniformLocation(shader, "uLevel"), c.X, c.Y, c.Z,1f);
+            // Pass Level and Options
+            GL.Uniform1(GL.GetUniformLocation(shader, "uLevel"), CurrentLevel);
+            GL.Uniform1(GL.GetUniformLocation(shader, "uIsTextured"), Program.Options.Textured ? 1 : 0);
 
             var proj = Matrix4.CreateOrthographicOffCenter(-2, 46, -2, 25, -1, 1);
-
             GL.UniformMatrix4(GL.GetUniformLocation(shader, "uProj"), false, ref proj);
 
             GL.BindVertexArray(vao);
+            // Draw: verts.Count / 5 because our stride is now 5
             GL.DrawArrays(PrimitiveType.Triangles, 0, verts.Count / 5);
-
-            PrintUI(text);
         }
         void PrintUI(TextRenderer text)
         {

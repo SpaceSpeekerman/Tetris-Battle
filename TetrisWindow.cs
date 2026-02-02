@@ -28,12 +28,6 @@ namespace Tetris
         Font font;
         Texture blocksTex;
 
-        readonly Vector3[] colors =
-        {
-            new(0,0,0), new(0,1,1), new(0,0,1), new(1,0.5f,0),
-            new(1,1,0), new(0,1,0), new(0.6f,0,0.6f), new(1,0,0)
-        };
-
         Random rand = new Random();
         public TetrisWindow(GameWindowSettings g, NativeWindowSettings n) : base(g, n) { }
 
@@ -52,36 +46,30 @@ namespace Tetris
             text.screenResolution(Size.X, Size.Y);
 
             shader = SimpleShader();
+            ShaderWatcherInit();
 
             blocksTex = new Texture("Asset\\blocks_8.png");
 
             vao = GL.GenVertexArray();
             
-
             vbo = GL.GenBuffer();
             GL.BindVertexArray(vao);
             GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
-            int stride = 7 * sizeof(float);
-
-            GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, stride, 0);
+            int stride = 5 * sizeof(float); // x, y, u, v, type
+            GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, stride, 0); // Pos
+            GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, 2 * sizeof(float)); // UV
+            GL.VertexAttribPointer(2, 1, VertexAttribPointerType.Float, false, stride, 4 * sizeof(float)); // Type
             GL.EnableVertexAttribArray(0);
-
-            // UV
-            GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, 2 * sizeof(float));
             GL.EnableVertexAttribArray(1);
-
-            // COLOR
-            GL.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, stride, 4 * sizeof(float));
             GL.EnableVertexAttribArray(2);
-            GL.EnableVertexAttribArray(0);
-            GL.EnableVertexAttribArray(1);
         }
 
         protected override void OnUpdateFrame(FrameEventArgs e)
         {
+            UpdateShaderRealTime();
+
             var js0 = gamepad0.Update((float)e.Time);
             var js1 = gamepad1.Update((float)e.Time);
-
 
             var input0 = TetrisInput.FromDevices(KeyboardState, js0, false);
             var input1 = TetrisInput.FromDevices(KeyboardState, js1, true);
@@ -310,64 +298,82 @@ namespace Tetris
             text.screenResolution(viewWidth, viewHeight);
         }
 
+        private FileSystemWatcher shaderWatcher;
+        private bool shadersDirty = false;
+        void ShaderWatcherInit()
+        {
+            // Set up the watcher
+            shaderWatcher = new FileSystemWatcher(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Asset"));
+            shaderWatcher.Filter = "game_shader.*"; // Watch both .vertex and .fragment
+            shaderWatcher.NotifyFilter = NotifyFilters.LastWrite;
+            shaderWatcher.Changed += (s, e) => shadersDirty = true;
+            shaderWatcher.EnableRaisingEvents = true;
+        }
+        void UpdateShaderRealTime()
+        {
+            if (shadersDirty)
+            {
+                try
+                {
+                    int newShader = SimpleShader();
+                    // Optional: Delete the old shader program to prevent memory leaks
+                    GL.DeleteProgram(shader);
+                    shader = newShader;
+                    Console.WriteLine("[SHADER] Reloaded successfully.");
+                    shadersDirty = false;
+                }
+                catch (Exception ex)
+                {
+                    // If there's a syntax error, we print it and wait for the user to fix it
+                    Console.WriteLine($"[SHADER] Reload failed: {ex.Message}");
+                    shadersDirty = false;
+                }
+            }
+        }
         int SimpleShader()
         {
-            // color
-            // string vs = "#version 330 core\r\nlayout (location = 0) in vec2 aPos;\r\nlayout (location = 1) in vec2 aUV;\r\nlayout (location = 2) in vec3 aColor;\r\n\r\nout vec2 vUV;\r\nout vec3 vColor;\r\n\r\nuniform mat4 uProj;\r\n\r\nvoid main()\r\n{\r\n    vUV = aUV;\r\n    vColor = aColor;\r\n    gl_Position = uProj * vec4(aPos, 0, 1);\r\n}\r\n";
-            // string fs = "#version 330 core\r\nin vec2 vUV;\r\nin vec3 vColor;\r\n\r\nout vec4 FragColor;\r\n\r\nuniform sampler2D uTex;\r\n\r\nvoid main()\r\n{\r\n    vec4 tex = texture(uTex, vUV);\r\n    FragColor = tex * vec4(vColor, 1.0);\r\n}\r\n";
-            // ignore color
-            string vs = @"
-#version 330 core
-layout (location = 0) in vec2 aPos;
-layout (location = 1) in vec2 aUV;
-layout (location = 2) in vec3 aColor;
-out vec2 vUV;
-out vec3 vColor;
-uniform mat4 uProj;
-void main(){
-    vUV = aUV;
-    vColor = aColor;
-    gl_Position = uProj * vec4(aPos, 0, 1);
-}";
-            string fs = @"
-#version 330 core
-in vec2 vUV;
-in vec3 vColor;
-out vec4 FragColor;
+            // Load source from files
+            string vs = File.ReadAllText("Asset\\game_shader.vertex");
+            string fs = File.ReadAllText("Asset\\game_shader.fragment");
 
-uniform sampler2D uTex;
-uniform vec4 uLevel; // Your tint color
-
-void main()
-{
-    vec4 tex = texture(uTex, vUV);
-    
-    // 1. Determine how ""white"" the pixel is.
-    float brightness = (tex.r + tex.g + tex.b) / 3.0;
-    float whiteMask = smoothstep(0.6, 0.9, brightness);
-    
-    // 2. Standard multiplication for the dark/colored parts
-    vec3 tintedBody = tex.rgb * uLevel.rgb;
-    
-    // 3. Slightly multiply the white area too (at ~20% intensity)
-    // We mix white (1,1,1) with uLevel so the white isn't pure white anymore
-    vec3 tintedWhite = tex.rgb * mix(vec3(1.0), uLevel.rgb, 0.2);
-    
-    // 4. Combine based on the mask
-    vec3 combined = mix(tintedBody, tintedWhite, whiteMask);
-    
-    // 5. Global Brightness Boost (Gain)
-    // Multiplying the final result by 1.2 makes everything 20% brighter
-    FragColor = vec4(combined * 1.2, tex.a);
-}
-";
             int V = GL.CreateShader(ShaderType.VertexShader);
-            GL.ShaderSource(V, vs); GL.CompileShader(V);
+            GL.ShaderSource(V, vs);
+            GL.CompileShader(V);
+            CheckShaderErrors(V, "VERTEX");
+
             int F = GL.CreateShader(ShaderType.FragmentShader);
-            GL.ShaderSource(F, fs); GL.CompileShader(F);
+            GL.ShaderSource(F, fs);
+            GL.CompileShader(F);
+            CheckShaderErrors(F, "FRAGMENT");
+
             int P = GL.CreateProgram();
-            GL.AttachShader(P, V); GL.AttachShader(P, F); GL.LinkProgram(P);
+            GL.AttachShader(P, V);
+            GL.AttachShader(P, F);
+            GL.LinkProgram(P);
+
+            // Check for linking errors (mismatched in/out variables)
+            GL.GetProgram(P, GetProgramParameterName.LinkStatus, out int success);
+            if (success == 0)
+            {
+                string infoLog = GL.GetProgramInfoLog(P);
+                Console.WriteLine($"ERROR::SHADER::PROGRAM::LINKING_FAILED\n{infoLog}");
+            }
+
+            // Cleanup individual shaders once linked
+            GL.DeleteShader(V);
+            GL.DeleteShader(F);
+
             return P;
+        }
+
+        void CheckShaderErrors(int shader, string type)
+        {
+            GL.GetShader(shader, ShaderParameter.CompileStatus, out int success);
+            if (success == 0)
+            {
+                string infoLog = GL.GetShaderInfoLog(shader);
+                Console.WriteLine($"ERROR::SHADER::{type}::COMPILATION_FAILED\n{infoLog}");
+            }
         }
     }
 }

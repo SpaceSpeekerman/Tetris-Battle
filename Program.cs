@@ -36,6 +36,8 @@ namespace Tetris
             public bool FirstPlayerWins;
             public bool InfiniteLevel;
 
+            public bool Textured;
+
             public KeyBindings KeyBindingsPlayer1;
             public KeyBindings KeyBindingsPlayer2;
             public GamepadBindings GamepadBindingsPlayer1;
@@ -65,7 +67,8 @@ namespace Tetris
             LockDelay = true,
             GarbageLines = true,
             FirstPlayerWins = true,
-            InfiniteLevel = false
+            InfiniteLevel = false,
+            Textured = false
         };
     }
 

@@ -1,0 +1,76 @@
+﻿#version 330 core
+in vec2 vUV;
+in float vBlockType;
+out vec4 FragColor;
+
+uniform sampler2D uTex;
+uniform int uLevel;
+uniform bool uIsTextured;
+
+// NES Palettes (same as before)
+vec3 palA[10] = vec3[](
+    vec3(0.12, 0.29, 1.0), vec3(0.0, 0.62, 0.0), vec3(0.7, 0.11, 0.92),
+    vec3(0.12, 0.29, 1.0), vec3(0.89, 0.0, 0.38), vec3(0.3, 0.77, 0.61),
+    vec3(0.7, 0.11, 0.11), vec3(0.42, 0.11, 0.92), vec3(0.12, 0.29, 1.0), vec3(0.89, 0.35, 0.0)
+);
+vec3 palB[10] = vec3[](
+    vec3(0.24, 0.71, 1.0), vec3(0.5, 0.89, 0.0), vec3(1.0, 0.49, 1.0),
+    vec3(0.31, 0.93, 0.38), vec3(0.0, 0.9, 0.65), vec3(0.51, 0.51, 1.0),
+    vec3(0.5, 0.89, 0.0), vec3(0.7, 0.11, 0.11), vec3(0.89, 0.35, 0.0), vec3(0.89, 0.0, 0.38)
+);
+
+vec3 original[7] = vec3[](
+    vec3(0,1,1), vec3(0,0,1), vec3(1,0.5,0), vec3(1,1,0), vec3(0,1,0), vec3(0.6,0,0.6), vec3(1,0,0)
+);
+
+int pieceMap[7] = int[](0, 0, 0, 0, 1, 1, 1);
+
+void main() {
+    int type = int(vBlockType);
+    vec4 tex = texture(uTex, vUV);
+    float brightness = (tex.r + tex.g + tex.b) / 3.0;
+    
+    vec3 levelColA = palA[uLevel % 10];
+    vec3 levelColB = palB[uLevel % 10];
+    
+    vec3 finalCol;
+    
+    if (type == 20) { 
+        // --- WALL LOGIC ---
+        // Tint the wall with a mix of the level's primary color and a dark base
+        vec3 wallBase = mix(vec3(0.2), levelColA, 0.4); 
+        finalCol = wallBase * brightness;
+    }
+
+    else { 
+        // --- PIECE LOGIC ---
+        if (!uIsTextured) {
+            // Untextured: use original colors but tint the ""dark"" parts with the level
+            vec3 pieceBase = original[type % 7];
+            finalCol = mix(pieceBase * 0.5 * levelColA, pieceBase, brightness);
+        }
+        else {
+            // NES Textured: Interchanging color system
+            vec3 nesBase = (pieceMap[type % 7] == 0) ? levelColA : levelColB;
+            
+            // --- GHOST LOGIC ---
+            if (type == 10) { 
+                finalCol = nesBase*tex.xyz;
+            }
+            else if (brightness > 0.85) {
+                // Soften the white by mixing it 20% with the level color
+                finalCol = mix(vec3(1.0), nesBase, 0.2);
+            } 
+            else if (brightness > 0.35) {
+                finalCol = nesBase;
+            } 
+            else {
+                // Dark shade is now a deep tint of the level color instead of just black
+                finalCol = nesBase * tex.xyz;
+            }
+        }
+    }
+
+    // Apply global boost and maintain alpha
+    FragColor = vec4(finalCol * 1.1, tex.a);
+}
